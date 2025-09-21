@@ -1,105 +1,129 @@
+import os
 import re
-import logging
-import threading
+import telebot
 from flask import Flask, request
-from telegram import Update, ChatPermissions
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
+from threading import Timer
 
-from config import TOKEN, PORT
+# =====================
+# تنظیمات
+# =====================
+TOKEN = os.getenv("BOT_TOKEN")  # توکن باید توی Render → Environment Variable ست بشه
+if not TOKEN:
+    TOKEN = "توکن_اینجا"
 
-# فعال‌سازی لاگ
-logging.basicConfig(level=logging.INFO)
-
-# ساخت اپلیکیشن تلگرام
-application = Application.builder().token(TOKEN).build()
-
-# اپ Flask برای وبهوک
+bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# --- دستورات مدیریتی ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "سلام 👋\n"
-        "این ربات مخصوص مدیریت گروه است.\n\n"
-        "📌 دستورات مدیر:\n"
-        " - /ban (با ریپلای) = بن کاربر\n"
-        " - /unban (با ریپلای) = رفع بن\n"
-        " - /mute (با ریپلای) = بی‌صدا کردن\n"
-        " - /unmute (با ریپلای) = رفع بی‌صدا\n\n"
-        "ℹ️ پشتیبانی: @Aliasghar091a"
-    )
+# =====================
+# توابع کمکی
+# =====================
+def delete_later(chat_id, message_id, delay=10):
+    """حذف پیام بعد از چند ثانیه"""
+    Timer(delay, lambda: bot.delete_message(chat_id, message_id)).start()
 
-async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.reply_to_message:
-        user = update.message.reply_to_message.from_user
-        await context.bot.ban_chat_member(update.effective_chat.id, user.id)
-        msg = await update.message.reply_text(f"🚫 کاربر {user.first_name} بن شد.")
-        threading.Timer(10, lambda: context.application.create_task(msg.delete())).start()
+def is_admin(chat_id, user_id):
+    """بررسی اینکه کاربر ادمین گروه هست یا نه"""
+    try:
+        member = bot.get_chat_member(chat_id, user_id)
+        return member.status in ["administrator", "creator"]
+    except:
+        return False
 
-async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.reply_to_message:
-        user = update.message.reply_to_message.from_user
-        await context.bot.unban_chat_member(update.effective_chat.id, user.id)
-        msg = await update.message.reply_text(f"✅ کاربر {user.first_name} رفع بن شد.")
-        threading.Timer(10, lambda: context.application.create_task(msg.delete())).start()
+# =====================
+# هندلر استارت
+# =====================
+@bot.message_handler(commands=["start"])
+def send_start(message):
+    txt = "سلام 👋\nمن ربات مدیریت گروه هستم.\n\n" \
+          "📌 /help → راهنما\n" \
+          "📌 /support → پشتیبانی"
+    sent = bot.reply_to(message, txt)
+    delete_later(sent.chat.id, sent.message_id)
 
-async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.reply_to_message:
-        user = update.message.reply_to_message.from_user
-        permissions = ChatPermissions(can_send_messages=False)
-        await context.bot.restrict_chat_member(update.effective_chat.id, user.id, permissions=permissions)
-        msg = await update.message.reply_text(f"🔇 کاربر {user.first_name} بی‌صدا شد.")
-        threading.Timer(10, lambda: context.application.create_task(msg.delete())).start()
+@bot.message_handler(commands=["help"])
+def send_help(message):
+    txt = "📖 راهنمای ربات:\n\n" \
+          "🔹 ریپلای کنید و دستور بزنید:\n" \
+          " /ban → بن\n" \
+          " /unban → رفع بن\n" \
+          " /mute → بیصدا\n" \
+          " /unmute → رفع بیصدا"
+    sent = bot.reply_to(message, txt)
+    delete_later(sent.chat.id, sent.message_id)
 
-async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.reply_to_message:
-        user = update.message.reply_to_message.from_user
-        permissions = ChatPermissions(can_send_messages=True)
-        await context.bot.restrict_chat_member(update.effective_chat.id, user.id, permissions=permissions)
-        msg = await update.message.reply_text(f"🔊 کاربر {user.first_name} رفع بی‌صدا شد.")
-        threading.Timer(10, lambda: context.application.create_task(msg.delete())).start()
+@bot.message_handler(commands=["support"])
+def send_support(message):
+    txt = "📩 برای پشتیبانی با مدیر تماس بگیرید."
+    sent = bot.reply_to(message, txt)
+    delete_later(sent.chat.id, sent.message_id)
 
-# --- حذف لینک و فحاشی ---
-BAD_WORDS = ["کلمه_بد1", "کلمه_بد2", "کلمه_بد3"]
+# =====================
+# مدیریت لینک و تبلیغات
+# =====================
+@bot.message_handler(func=lambda m: True)
+def filter_links(message):
+    if re.search(r"(https?://|t\.me/|www\.)", message.text or "", re.IGNORECASE):
+        try:
+            bot.delete_message(message.chat.id, message.message_id)
+        except:
+            pass
 
-async def filter_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text or ""
-    if re.search(r"(https?://\S+)", text):  # لینک
-        await update.message.delete()
-    elif any(bad_word in text for bad_word in BAD_WORDS):  # فحش
-        await update.message.delete()
+# =====================
+# دستورات مدیریتی
+# =====================
+@bot.message_handler(commands=["ban", "unban", "mute", "unmute"])
+def admin_actions(message):
+    if not message.reply_to_message:
+        sent = bot.reply_to(message, "❗️باید روی پیام کاربر ریپلای کنید.")
+        delete_later(sent.chat.id, sent.message_id)
+        return
 
-# --- حذف پیام ربات بعد از 10 ثانیه ---
-async def auto_delete(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    if msg.from_user.is_bot:  # فقط پیام‌های ربات
-        threading.Timer(10, lambda: context.application.create_task(msg.delete())).start()
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    target_id = message.reply_to_message.from_user.id
 
-# --- هندلرها ---
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("ban", ban))
-application.add_handler(CommandHandler("unban", unban))
-application.add_handler(CommandHandler("mute", mute))
-application.add_handler(CommandHandler("unmute", unmute))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, filter_messages))
-application.add_handler(MessageHandler(filters.ALL, auto_delete))
+    if not is_admin(chat_id, user_id):
+        sent = bot.reply_to(message, "🚫 فقط مدیران می‌توانند از این دستور استفاده کنند.")
+        delete_later(sent.chat.id, sent.message_id)
+        return
 
-# --- Flask routes ---
-@app.route("/")
-def home():
-    return "ربات مدیریت گروه فعال است ✅"
+    cmd = message.text.split()[0].lower()
 
+    try:
+        if cmd == "/ban":
+            bot.ban_chat_member(chat_id, target_id)
+            resp = bot.reply_to(message, "✅ کاربر بن شد.")
+        elif cmd == "/unban":
+            bot.unban_chat_member(chat_id, target_id)
+            resp = bot.reply_to(message, "✅ کاربر رفع بن شد.")
+        elif cmd == "/mute":
+            bot.restrict_chat_member(chat_id, target_id, can_send_messages=False)
+            resp = bot.reply_to(message, "🔇 کاربر بی‌صدا شد.")
+        elif cmd == "/unmute":
+            bot.restrict_chat_member(chat_id, target_id, can_send_messages=True)
+            resp = bot.reply_to(message, "🔊 کاربر از بی‌صدا خارج شد.")
+
+        delete_later(resp.chat.id, resp.message_id)
+    except Exception as e:
+        sent = bot.reply_to(message, f"⚠️ خطا: {e}")
+        delete_later(sent.chat.id, sent.message_id)
+
+# =====================
+# وبهوک
+# =====================
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    application.update_queue.put_nowait(update)
-    return "ok"
+    update = telebot.types.Update.de_json(request.data.decode("utf-8"))
+    bot.process_new_updates([update])
+    return "OK", 200
 
+@app.route("/")
+def home():
+    return "ربات فعال است ✅", 200
+
+# =====================
+# اجرا
+# =====================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=PORT)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
