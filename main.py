@@ -1,46 +1,34 @@
+import telebot
 from flask import Flask, request
-from telegram import Update, Bot
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-import logging
-import asyncio
 import config
 
-# لاگ
-logging.basicConfig(level=logging.INFO)
+bot = telebot.TeleBot(config.TOKEN)
+server = Flask(__name__)
 
-# ساخت ربات
-bot = Bot(token=config.TOKEN)
-application = Application.builder().token(config.TOKEN).build()
+# ---------------- دستورات ربات ---------------- #
+@bot.message_handler(commands=["start"])
+def start_message(message):
+    bot.reply_to(message, "سلام ✨\nمن رباتت هستم. آماده‌ام برات کار کنم 🚀")
 
-# دستور استارت
-async def start(update: Update, context):
-    await update.message.reply_text("✅ ربات مدیریت گروه فعال شد\n\nپشتیبانی: @Aliasghar091a")
+@bot.message_handler(commands=["help"])
+def help_message(message):
+    bot.reply_to(message, "دستورات موجود:\n/start - شروع\n/help - راهنما")
 
-# هندلرها
-application.add_handler(CommandHandler("start", start))
+@bot.message_handler(func=lambda m: True)
+def echo_all(message):
+    bot.reply_to(message, f"شما گفتید: {message.text}")
 
-# حذف لینک
-async def remove_links(update: Update, context):
-    if "http" in update.message.text:
-        try:
-            await update.message.delete()
-        except:
-            pass
-
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, remove_links))
-
-# Flask برای Webhook
-app = Flask(__name__)
-
-@app.route(f"/{config.TOKEN}", methods=["POST"])
+# ---------------- وبهوک ---------------- #
+@server.route(f"/{config.TOKEN}", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot)
-    asyncio.run(application.process_update(update))
-    return "ok"
+    update = request.stream.read().decode("utf-8")
+    bot.process_new_updates([telebot.types.Update.de_json(update)])
+    return "!", 200
 
-@app.route("/")
-def home():
-    return "Bot is running!"
+@server.route("/")
+def index():
+    return "ربات آنلاین است ✅", 200
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=config.PORT)
+    # روی Render فقط این کد اجرا میشه
+    server.run(host="0.0.0.0", port=config.PORT)
