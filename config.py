@@ -1,5 +1,15 @@
+# config.py
 import os
 
-BOT_TOKEN = os.environ.get("8418297859:AAHH89g2QwsEsmWnmM09bm4hRGfw55FRo18")   # اسم کلیدی که تو Render ساختی
-PORT = int(os.environ.get("PORT", 10000)) # پیش‌فرض 10000
-URL = os.environ.get("RENDER_EXTERNAL_URL", "https://mdyryt-grwh.onrender.com")
+# مقدار توکن از VAR گرفته می‌شود — در Render: KEY = BOT_TOKEN , VALUE = your_token
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+
+# پورت را از Render یا مقدار پیش‌فرض می‌گیریم
+PORT = int(os.environ.get("PORT", 10000))
+
+# آدرس بیرونی (Render) برای ست کردن webhook
+RENDER_EXTERNAL_URL = os.environ.get("RENDER_EXTERNAL_URL", "")
+# مثلاً: "https://mdyryt-grwh.onrender.com"
+
+# شناسه پشتیبانی که ربات بعد از استارت پیام می‌دهد (مثال)
+SUPPORT_USERNAME = os.environ.get("SUPPORT_USERNAME", "@Aliasghar091a")
