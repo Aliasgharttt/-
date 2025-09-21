@@ -1,34 +1,29 @@
-import telebot
 from flask import Flask, request
+import telebot
 import config
 
-bot = telebot.TeleBot(config.TOKEN)
-server = Flask(__name__)
+bot = telebot.TeleBot(config.BOT_TOKEN)
+app = Flask(__name__)
 
-# ---------------- دستورات ربات ---------------- #
+# هندلر استارت
 @bot.message_handler(commands=["start"])
-def start_message(message):
-    bot.reply_to(message, "سلام ✨\nمن رباتت هستم. آماده‌ام برات کار کنم 🚀")
+def send_welcome(message):
+    bot.reply_to(message, "ربات با موفقیت فعاله ✅")
 
-@bot.message_handler(commands=["help"])
-def help_message(message):
-    bot.reply_to(message, "دستورات موجود:\n/start - شروع\n/help - راهنما")
-
-@bot.message_handler(func=lambda m: True)
-def echo_all(message):
-    bot.reply_to(message, f"شما گفتید: {message.text}")
-
-# ---------------- وبهوک ---------------- #
-@server.route(f"/{config.TOKEN}", methods=["POST"])
-def webhook():
-    update = request.stream.read().decode("utf-8")
-    bot.process_new_updates([telebot.types.Update.de_json(update)])
+# دریافت پیام‌ها از تلگرام
+@app.route("/" + config.BOT_TOKEN, methods=["POST"])
+def getMessage():
+    json_str = request.stream.read().decode("UTF-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
     return "!", 200
 
-@server.route("/")
-def index():
-    return "ربات آنلاین است ✅", 200
+# ست کردن وبهوک
+@app.route("/")
+def webhook():
+    bot.remove_webhook()
+    bot.set_webhook(url=f"{config.URL}/{config.BOT_TOKEN}")
+    return "Webhook set!", 200
 
 if __name__ == "__main__":
-    # روی Render فقط این کد اجرا میشه
-    server.run(host="0.0.0.0", port=config.PORT)
+    app.run(host="0.0.0.0", port=config.PORT)
