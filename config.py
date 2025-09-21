@@ -1,7 +1,5 @@
 import os
 
-# توکن ربات از محیط گرفته میشه (نه مستقیم تو کد!)
-TOKEN = os.environ.get("8418297859:AAHH89g2QwsEsmWnmM09bm4hRGfw55FRo18")
-
-# Render خودش PORT رو ست می‌کنه
-PORT = int(os.environ.get("PORT", 1000))
+BOT_TOKEN = os.environ.get("8418297859:AAHH89g2QwsEsmWnmM09bm4hRGfw55FRo18")   # اسم کلیدی که تو Render ساختی
+PORT = int(os.environ.get("PORT", 10000)) # پیش‌فرض 10000
+URL = os.environ.get("RENDER_EXTERNAL_URL", "https://mdyryt-grwh.onrender.com")
