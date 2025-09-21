@@ -1,104 +1,133 @@
-import os
-from flask import Flask, request
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import re
+import asyncio
+from telegram import Update, ChatPermissions
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    CallbackContext,
+)
+from config import TOKEN
 
-# توکن رو از Environment Variable می‌گیریم
-TOKEN = os.getenv("BOT_TOKEN")
-if not TOKEN:
-    raise ValueError("❌ BOT_TOKEN is not set in environment variables!")
+# لیست فحاشی
+BAD_WORDS = ["کلمه1", "کلمه2", "کلمه3"]  # کلمات بد رو اینجا اضافه کن
 
-# اپلیکیشن Flask برای Webhook
-app = Flask(__name__)
+# --- بررسی ادمین ---
+async def is_admin(update: Update, context: CallbackContext) -> bool:
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    member = await context.bot.get_chat_member(chat_id, user_id)
+    return member.status in ["administrator", "creator"]
 
-# اپلیکیشن ربات
-application = Application.builder().token(TOKEN).build()
+# --- شروع ---
+async def start(update: Update, context: CallbackContext):
+    text = (
+        "👋 سلام! من ربات مدیریت گروه هستم.\n\n"
+        "📌 قابلیت‌ها:\n"
+        "1️⃣ خوشامدگویی خودکار (پاک بعد ۱۰ ثانیه)\n"
+        "2️⃣ حذف لینک‌ها و فحاشی\n"
+        "3️⃣ /ban [id] → بن کردن کاربر\n"
+        "4️⃣ /unban [id] → رفع بن\n"
+        "5️⃣ /mute [id] → بی‌صدا کردن کاربر\n"
+        "6️⃣ /unmute [id] → رفع بی‌صدا\n\n"
+        "🛠 فقط مدیرها می‌توانند از دستورات مدیریتی استفاده کنند."
+    )
+    msg = await update.message.reply_text(text)
+    await asyncio.sleep(10)
+    await msg.delete()
 
-# دستورات مدیر
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = await update.message.reply_text("🤖 Bot started successfully!")
-    await msg.delete(delay=10)  # پاک شدن بعد از 10 ثانیه
+# --- خوشامدگویی ---
+async def welcome(update: Update, context: CallbackContext):
+    for member in update.message.new_chat_members:
+        msg = await update.message.reply_text(f"🎉 خوش آمدی {member.first_name}!")
+        await asyncio.sleep(10)
+        await msg.delete()
 
-async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.reply_to_message:
-        user_id = update.message.reply_to_message.from_user.id
-        await context.bot.ban_chat_member(update.effective_chat.id, user_id)
-        msg = await update.message.reply_text("🚫 User banned.")
-        await msg.delete(delay=10)
-
-async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.args:
-        user_id = int(context.args[0])
-        await context.bot.unban_chat_member(update.effective_chat.id, user_id)
-        msg = await update.message.reply_text("✅ User unbanned.")
-        await msg.delete(delay=10)
-
-async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.reply_to_message:
-        user_id = update.message.reply_to_message.from_user.id
-        await context.bot.restrict_chat_member(
-            update.effective_chat.id,
-            user_id,
-            permissions={"can_send_messages": False}
-        )
-        msg = await update.message.reply_text("🔇 User muted.")
-        await msg.delete(delay=10)
-
-async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.args:
-        user_id = int(context.args[0])
-        await context.bot.restrict_chat_member(
-            update.effective_chat.id,
-            user_id,
-            permissions={
-                "can_send_messages": True,
-                "can_send_media_messages": True,
-                "can_send_polls": True,
-                "can_send_other_messages": True,
-            }
-        )
-        msg = await update.message.reply_text("🔊 User unmuted.")
-        await msg.delete(delay=10)
-
-# حذف لینک‌ها
-async def delete_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if "http" in update.message.text:
-        await update.message.delete()
-
-# حذف فحاشی (لیست نمونه)
-bad_words = ["badword1", "badword2"]
-
-async def filter_bad_words(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- حذف لینک و فحاشی ---
+async def filter_messages(update: Update, context: CallbackContext):
     text = update.message.text.lower()
-    if any(word in text for word in bad_words):
+
+    if "http" in text or "www" in text or re.search(r"\.ir|\.com", text):
         await update.message.delete()
+        return
 
-# هندلرها
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("ban", ban))
-application.add_handler(CommandHandler("unban", unban))
-application.add_handler(CommandHandler("mute", mute))
-application.add_handler(CommandHandler("unmute", unmute))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, delete_links))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, filter_bad_words))
+    for bad in BAD_WORDS:
+        if bad in text:
+            await update.message.delete()
+            return
 
-# ست کردن Webhook
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.get_json(force=True), application.bot)
-    application.update_queue.put_nowait(update)
-    return "ok"
+# --- بن ---
+async def ban(update: Update, context: CallbackContext):
+    if not await is_admin(update, context):
+        await update.message.reply_text("🚫 فقط مدیرها می‌توانند از این دستور استفاده کنند.")
+        return
+    if context.args:
+        target_id = int(context.args[0])
+        await context.bot.ban_chat_member(update.effective_chat.id, target_id)
+        await update.message.reply_text("✅ کاربر بن شد.")
+    else:
+        await update.message.reply_text("❌ لطفا آی‌دی کاربر را وارد کنید.")
 
-@app.route("/")
-def index():
-    return "🤖 Bot is running!"
+# --- رفع بن ---
+async def unban(update: Update, context: CallbackContext):
+    if not await is_admin(update, context):
+        await update.message.reply_text("🚫 فقط مدیرها می‌توانند از این دستور استفاده کنند.")
+        return
+    if context.args:
+        target_id = int(context.args[0])
+        await context.bot.unban_chat_member(update.effective_chat.id, target_id)
+        await update.message.reply_text("✅ کاربر رفع بن شد.")
+    else:
+        await update.message.reply_text("❌ لطفا آی‌دی کاربر را وارد کنید.")
+
+# --- بی‌صدا ---
+async def mute(update: Update, context: CallbackContext):
+    if not await is_admin(update, context):
+        await update.message.reply_text("🚫 فقط مدیرها می‌توانند از این دستور استفاده کنند.")
+        return
+    if context.args:
+        target_id = int(context.args[0])
+        await context.bot.restrict_chat_member(
+            update.effective_chat.id,
+            target_id,
+            ChatPermissions(can_send_messages=False),
+        )
+        await update.message.reply_text("🔇 کاربر بی‌صدا شد.")
+    else:
+        await update.message.reply_text("❌ لطفا آی‌دی کاربر را وارد کنید.")
+
+# --- رفع بی‌صدا ---
+async def unmute(update: Update, context: CallbackContext):
+    if not await is_admin(update, context):
+        await update.message.reply_text("🚫 فقط مدیرها می‌توانند از این دستور استفاده کنند.")
+        return
+    if context.args:
+        target_id = int(context.args[0])
+        await context.bot.restrict_chat_member(
+            update.effective_chat.id,
+            target_id,
+            ChatPermissions(can_send_messages=True),
+        )
+        await update.message.reply_text("🔊 کاربر رفع بی‌صدا شد.")
+    else:
+        await update.message.reply_text("❌ لطفا آی‌دی کاربر را وارد کنید.")
+
+# --- اجرای ربات ---
+def main():
+    app = Application.builder().token(TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, filter_messages))
+
+    app.add_handler(CommandHandler("ban", ban))
+    app.add_handler(CommandHandler("unban", unban))
+    app.add_handler(CommandHandler("mute", mute))
+    app.add_handler(CommandHandler("unmute", unmute))
+
+    print("🤖 Bot is running...")
+    app.run_polling()
 
 if __name__ == "__main__":
-    PORT = int(os.environ.get("PORT", 10000))
-    application.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path=TOKEN,
-        webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
-    )
-    app.run(host="0.0.0.0", port=PORT)
+    main()
