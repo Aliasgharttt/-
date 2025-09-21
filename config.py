@@ -1,4 +1,2 @@
-import os
-
-TOKEN = os.getenv("BOT_TOKEN")  # توکن از Environment Variable خونده میشه
-PORT = int(os.getenv("PORT", 10000))  # پورت پیش‌فرض 10000
+TOKEN = "8418297859:AAHH89g2QwsEsmWnmM09bm4hRGfw55FRo18"
+WEBHOOK_URL = "اینجا://your-app-name.onrender.com/webhook"
