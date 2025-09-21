@@ -1,4 +1,4 @@
-# config.import os
+import os   # این خط یادت رفته بود
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")  # از Environment Variables می‌خونه
 PORT = int(os.getenv("PORT", 10000))
