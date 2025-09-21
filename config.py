@@ -1,5 +1,4 @@
-import os   # این خط یادت رفته بود
+import os
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # از Environment Variables می‌خونه
-PORT = int(os.getenv("PORT", 10000))
-URL = os.getenv("RENDER_URL")  # آدرس پروژه روی Render
+TOKEN = os.getenv("BOT_TOKEN")  # توکن از Environment Variable خونده میشه
+PORT = int(os.getenv("PORT", 10000))  # پورت پیش‌فرض 10000
