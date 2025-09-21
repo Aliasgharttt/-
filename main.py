@@ -1,107 +1,109 @@
+import os
+import re
 import asyncio
 from telegram import Update, ChatPermissions
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    filters, ContextTypes
+)
 from config import TOKEN
 
-# حذف خودکار پیام بعد از 10 ثانیه
-async def auto_delete(message):
-    await asyncio.sleep(10)
+# حذف پیام بعد از چند ثانیه
+async def delete_later(context: ContextTypes.DEFAULT_TYPE, message_id, chat_id, delay=10):
+    await asyncio.sleep(delay)
     try:
-        await message.delete()
+        await context.bot.delete_message(chat_id, message_id)
     except:
         pass
 
-# استارت
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = await update.message.reply_text(
-        "سلام 👋\nمن یک ربات مدیریت گروه هستم.\n\n"
-        "ویژگی‌ها:\n"
-        "✅ خوشامدگویی\n"
-        "✅ حذف لینک\n"
-        "✅ حذف فحاشی\n"
-        "✅ سایلنس/آن‌سایلنس\n"
-        "✅ بن/آن‌بن\n"
-        "✅ حذف خودکار پیام‌های ربات بعد از ۱۰ ثانیه\n\n"
-        "پشتیبانی: @Aliasghar091a"
-    )
-    await auto_delete(msg)
-
-# خوشامد
+# پیام خوشامدگویی
 async def welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    for member in update.message.new_chat_members:
-        msg = await update.message.reply_text(f"خوش اومدی {member.mention_html()} 🎉", parse_mode="HTML")
-        await auto_delete(msg)
+    if update.message.new_chat_members:
+        for member in update.message.new_chat_members:
+            msg = await update.message.reply_text(f"Welcome {member.mention_html()} 👋",
+                                                  parse_mode="HTML")
+            asyncio.create_task(delete_later(context, msg.message_id, msg.chat_id))
 
 # حذف لینک
-async def remove_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if "http" in update.message.text or "t.me" in update.message.text:
-        await update.message.delete()
+async def delete_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if re.search(r"(http[s]?://|t\.me|www\.)", update.message.text, re.IGNORECASE):
+        try:
+            await update.message.delete()
+        except:
+            pass
 
 # حذف فحاشی (لیست نمونه)
-bad_words = ["کلمه1", "کلمه2", "کلمه3"]
+BAD_WORDS = ["fuck", "shit", "koskhol", "khar"]
 
-async def remove_badwords(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if any(word in update.message.text.lower() for word in bad_words):
-        await update.message.delete()
+async def delete_bad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.lower()
+    if any(word in text for word in BAD_WORDS):
+        try:
+            await update.message.delete()
+        except:
+            pass
 
-# سایلنس
-async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        return await update.message.reply_text("برای سایلنس باید روی پیام کاربر ریپلای کنید.")
-    user = update.message.reply_to_message.from_user.id
-    await context.bot.restrict_chat_member(
-        update.effective_chat.id,
-        user,
-        ChatPermissions(can_send_messages=False)
-    )
-    msg = await update.message.reply_text("کاربر بی‌صدا شد 🔇")
-    await auto_delete(msg)
+# پشتیبانی (دستور /start)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = await update.message.reply_text("Support: @Aliasghar091a")
+    asyncio.create_task(delete_later(context, msg.message_id, msg.chat_id))
 
-# آن‌سایلنس
-async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        return await update.message.reply_text("برای رفع سایلنس باید روی پیام کاربر ریپلای کنید.")
-    user = update.message.reply_to_message.from_user.id
-    await context.bot.restrict_chat_member(
-        update.effective_chat.id,
-        user,
-        ChatPermissions(can_send_messages=True)
-    )
-    msg = await update.message.reply_text("کاربر از حالت بی‌صدا خارج شد 🔊")
-    await auto_delete(msg)
-
-# بن
+# بن کاربر
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        return await update.message.reply_text("برای بن باید روی پیام کاربر ریپلای کنید.")
-    user = update.message.reply_to_message.from_user.id
-    await context.bot.ban_chat_member(update.effective_chat.id, user)
-    msg = await update.message.reply_text("کاربر بن شد 🚫")
-    await auto_delete(msg)
+    if update.message.reply_to_message:
+        user_id = update.message.reply_to_message.from_user.id
+        await context.bot.ban_chat_member(update.effective_chat.id, user_id)
+        msg = await update.message.reply_text("User banned ✅")
+        asyncio.create_task(delete_later(context, msg.message_id, msg.chat_id))
 
-# آن‌بن
+# رفع بن
 async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.reply_to_message:
-        return await update.message.reply_text("برای رفع بن باید روی پیام کاربر ریپلای کنید.")
-    user = update.message.reply_to_message.from_user.id
-    await context.bot.unban_chat_member(update.effective_chat.id, user)
-    msg = await update.message.reply_text("کاربر رفع بن شد ✅")
-    await auto_delete(msg)
+    if context.args:
+        user_id = int(context.args[0])
+        await context.bot.unban_chat_member(update.effective_chat.id, user_id)
+        msg = await update.message.reply_text("User unbanned ✅")
+        asyncio.create_task(delete_later(context, msg.message_id, msg.chat_id))
 
-# ران اصلی
-def main():
-    app = Application.builder().token(TOKEN).build()
+# بی‌صدا
+async def mute(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.reply_to_message:
+        user_id = update.message.reply_to_message.from_user.id
+        permissions = ChatPermissions(can_send_messages=False)
+        await context.bot.restrict_chat_member(update.effective_chat.id, user_id, permissions=permissions)
+        msg = await update.message.reply_text("User muted 🔇")
+        asyncio.create_task(delete_later(context, msg.message_id, msg.chat_id))
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, remove_links))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, remove_badwords))
-    app.add_handler(CommandHandler("mute", mute))
-    app.add_handler(CommandHandler("unmute", unmute))
-    app.add_handler(CommandHandler("ban", ban))
-    app.add_handler(CommandHandler("unban", unban))
+# رفع بی‌صدا
+async def unmute(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.reply_to_message:
+        user_id = update.message.reply_to_message.from_user.id
+        permissions = ChatPermissions(can_send_messages=True,
+                                      can_send_media_messages=True,
+                                      can_send_other_messages=True,
+                                      can_add_web_page_previews=True)
+        await context.bot.restrict_chat_member(update.effective_chat.id, user_id, permissions=permissions)
+        msg = await update.message.reply_text("User unmuted 🔊")
+        asyncio.create_task(delete_later(context, msg.message_id, msg.chat_id))
 
-    app.run_polling()
+# ------------------------
+# راه‌اندازی ربات (Webhook)
+# ------------------------
+PORT = int(os.environ.get("PORT", 8443))
+app = ApplicationBuilder().token(TOKEN).build()
 
-if __name__ == "__main__":
-    main()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("ban", ban))
+app.add_handler(CommandHandler("unban", unban))
+app.add_handler(CommandHandler("mute", mute))
+app.add_handler(CommandHandler("unmute", unmute))
+app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, delete_links))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, delete_bad))
+
+# Webhook
+app.run_webhook(
+    listen="0.0.0.0",
+    port=PORT,
+    url_path=TOKEN,
+    webhook_url=f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}/{TOKEN}"
+)
