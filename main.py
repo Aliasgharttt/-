@@ -50,30 +50,6 @@ def filter_bad_words(message):
     except:
         pass
 
-# 📌 ضد اسپم (بیش از 10 پیام در 10 ثانیه → بیصدا 1 دقیقه)
-@bot.message_handler(func=lambda msg: True)
-def anti_spam(message):
-    user_id = message.from_user.id
-    chat_id = message.chat.id
-    now = time.time()
-
-    if user_id not in user_messages:
-        user_messages[user_id] = []
-    user_messages[user_id] = [t for t in user_messages[user_id] if now - t < 10]
-    user_messages[user_id].append(now)
-
-    if len(user_messages[user_id]) > 10:
-        try:
-            bot.restrict_chat_member(
-                chat_id, user_id,
-                until_date=int(time.time()) + 60,  # 1 دقیقه
-                can_send_messages=False
-            )
-            sent = bot.send_message(chat_id, f"🚫 {message.from_user.first_name} به علت اسپم، 1 دقیقه بیصدا شد.")
-            delete_later(sent.chat.id, sent.message_id)
-        except:
-            pass
-
 # 📌 دستور start
 @bot.message_handler(commands=['start'])
 def start(message):
@@ -138,6 +114,30 @@ def report_user(message):
         try:
             bot.forward_message(admin.user.id, message.chat.id, message.reply_to_message.message_id)
             bot.send_message(admin.user.id, f"📢 گزارش توسط {message.from_user.first_name}")
+        except:
+            pass
+
+# 📌 ضد اسپم (آخر کد باید باشه!)
+@bot.message_handler(func=lambda msg: True)
+def anti_spam(message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    now = time.time()
+
+    if user_id not in user_messages:
+        user_messages[user_id] = []
+    user_messages[user_id] = [t for t in user_messages[user_id] if now - t < 10]
+    user_messages[user_id].append(now)
+
+    if len(user_messages[user_id]) > 10:
+        try:
+            bot.restrict_chat_member(
+                chat_id, user_id,
+                until_date=int(time.time()) + 60,  # 1 دقیقه
+                can_send_messages=False
+            )
+            sent = bot.send_message(chat_id, f"🚫 {message.from_user.first_name} به علت اسپم، 1 دقیقه بیصدا شد.")
+            delete_later(sent.chat.id, sent.message_id)
         except:
             pass
 
